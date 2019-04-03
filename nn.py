@@ -98,7 +98,7 @@ class nn:
 
 if __name__=="__main__":
     cv2.namedWindow("ttt", cv2.WINDOW_NORMAL);
-    t = nn("/home/blackmath/Motion/frozen_inference_graph.pb", "/home/blackmath/Motion/graph.pbtxt", "/home/blackmath/Motion/mscoco_label_map.pbtxt")
+    t = nn("***REMOVED***/frozen_inference_graph.pb", "***REMOVED***/graph.pbtxt", "***REMOVED***/mscoco_label_map.pbtxt")
     frame = cv2.imread("/home/blackmath/Motion/im.png")
     t.run(frame)
     cv2.imshow('ttt', frame)
