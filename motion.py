@@ -5,7 +5,7 @@ import imutils
 import time
 
 class motion:
-    def __init__(self):
+    def __init__(self, lumareas, lumdrawarea, imresizewidth, crop, imcrop):
         self.ceil = 1
         self.firstrun = 1
         #self.start_time = None
@@ -18,17 +18,21 @@ class motion:
         self.surface = None
         self.cursurface = 0
         self.temp = None
-        self.lumareas = [[90,180,115,250],[750,215,785,300],[300,150,330,176]]
-        self.lumareasshow = 0
+        self.lumareas = lumareas #[[90,180,115,250],[750,215,785,300],[300,150,330,176]]
+        self.lumareasshow = lumdrawarea
+        self.imresizewidth = imresizewidth#800        
+        self.crop = crop
+        self.imcrop = imcrop#[0, 200, 800, 600]
         
     def run(self, color_image_src):
         
             result = 0
             stats = {}
             
-            color_image_src = imutils.resize(color_image_src, width=min(800, color_image_src.shape[1]))
-            color_image_src = color_image_src[200:600, 0:800]
-            
+            color_image_src = imutils.resize(color_image_src, width=min(self.imresizewidth, color_image_src.shape[1]))
+            if self.crop > 0:
+                color_image_src = color_image_src[self.imcrop[1]:self.imcrop[3], self.imcrop[0]:self.imcrop[2]]
+         
             #------------------------------------------
             # First Run
             #------------------------------------------
@@ -55,7 +59,7 @@ class motion:
             #------------------------------------------
             lumavg = 0
             for area in self.lumareas:
-                if self.lumareasshow == 1:
+                if self.lumareasshow > 0:
                     color_image_src = cv2.rectangle(color_image_src,(area[0],area[1]),(area[2],area[3]),(0,0,255),2)
                 lumimage = color_image_src[area[1]:area[3], area[0]:area[2]]
                 lumimagegrey = cv2.cvtColor(lumimage, cv2.COLOR_RGB2GRAY)

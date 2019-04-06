@@ -94,14 +94,4 @@ class nn:
         self.net.setInput(cv2.dnn.blobFromImage(image, size=(300, 300), swapRB=True, crop=False))
         outs = self.net.forward()
         obj = self.postprocess(image, outs) 
-        return obj
-
-if __name__=="__main__":
-    cv2.namedWindow("ttt", cv2.WINDOW_NORMAL);
-    t = nn("***REMOVED***/frozen_inference_graph.pb", "***REMOVED***/graph.pbtxt", "***REMOVED***/mscoco_label_map.pbtxt")
-    frame = cv2.imread("/home/blackmath/Motion/im.png")
-    t.run(frame)
-    cv2.imshow('ttt', frame)
-    cv2.waitKey()
-    cv2.destroyAllWindows()
-    
+        return obj   
