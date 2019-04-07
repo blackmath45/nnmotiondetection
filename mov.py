@@ -15,6 +15,8 @@ import smtplib
 import imghdr
 from email.message import EmailMessage
 from configparser import ConfigParser
+import argparse
+
 
 #**************************************************************************************************
 
@@ -67,8 +69,8 @@ def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightana
             #stdscr.refresh()    
             #------------------------------------------ 
             
-            cv2.putText(color_image_src,"q:" + str(taskqueue.qsize()),(10,60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255,255,255),1,cv2.LINE_AA)         
-            cv2.imshow("Target", color_image_src)
+            # cv2.putText(color_image_src,"q:" + str(taskqueue.qsize()),(10,60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255,255,255),1,cv2.LINE_AA)         
+            # cv2.imshow("Target", color_image_src)
 
             if result > 0:
 
@@ -78,13 +80,13 @@ def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightana
                 if nnareas_crop > 0:
                     imagenn = imagenn[nnareas_targetarea[1]:nnareas_targetarea[3], nnareas_targetarea[0]:nnareas_targetarea[2]]#[680:1335, 600:1600] #from 600;680 to 1935;1335
                 objectsdetected = yy.run(imagenn)
-                imagenn_small = imutils.resize(imagenn, width=min(800, imagenn.shape[1]))
-                cv2.imshow("NN", imagenn_small)
+                # imagenn_small = imutils.resize(imagenn, width=min(800, imagenn.shape[1]))
+                # cv2.imshow("NN", imagenn_small)
                 
                 isInteresting = 0
                 
                 for obj in objectsdetected:
-                    if (obj[0] == 'person') or (obj[0] == 'car') or (obj[0] == 'bicycle') or (obj[0] == 'motorcycle') or (obj[0] == 'bus') or (obj[0] == 'truck'):
+                    if (obj[0] == 'person') or (obj[0] == 'car') or (obj[0] == 'bicycle') or (obj[0] == 'motorcycle') or (obj[0] == 'bus') or (obj[0] == 'truck') or (obj[0] == 'cat') or (obj[0] == 'dog'):
                         isInteresting = 1
                         
                 if (elapsed_time > 1) and (isInteresting == 1):
@@ -145,9 +147,9 @@ def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightana
             #if c == ord('q'):
                 #break  # Exit the while()
 
-            c = cv2.waitKey(7) % 0x100
-            if c == 27 or c == 10:
-               break
+            # c = cv2.waitKey(7) % 0x100
+            # if c == 27 or c == 10:
+               # break
             
     cv2.destroyAllWindows()
     print("Exiting process motion")
@@ -165,11 +167,23 @@ if __name__=="__main__":
     #stdscr.timeout(0)
     #------------------------------------------    
 
+
+    #------------------------------------------
+    # Arguments
+    #------------------------------------------      
+    # handle command line arguments
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-c', '--config', required=True,
+                    help = 'path to config file')
+    args = ap.parse_args()
+    #------------------------------------------   
+    
+
     #------------------------------------------
     # Load Config
     #------------------------------------------  
     config = ConfigParser()
-    config.read('config.ini')
+    config.read(args.config)
     
     camera_url = config.get('camera', 'url')
     
