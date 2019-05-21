@@ -35,7 +35,10 @@ def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightana
     
     while True:
         image = taskqueue.get()              # Added
-        
+
+        if taskqueue.qsize() > 30:
+            print("Warning : " + str(taskqueue.qsize()))
+
         sendmail = 0
         
         if not (image is None):        
@@ -86,7 +89,7 @@ def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightana
                 isInteresting = 0
                 
                 for obj in objectsdetected:
-                    if (obj[0] == 'person') or (obj[0] == 'car') or (obj[0] == 'bicycle') or (obj[0] == 'motorcycle') or (obj[0] == 'bus') or (obj[0] == 'truck') or (obj[0] == 'cat') or (obj[0] == 'dog'):
+                    if (obj[0] == 'person') or (obj[0] == 'car') or (obj[0] == 'bicycle') or (obj[0] == 'motorcycle') or (obj[0] == 'bus') or (obj[0] == 'truck') :
                         isInteresting = 1
                         
                 if (elapsed_time > 1) and (isInteresting == 1):
@@ -95,7 +98,7 @@ def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightana
                         image = image[detection_targetarea[1]:detection_targetarea[3], detection_targetarea[0]:detection_targetarea[2]]#[680:1335, 320:1935]
                     #cv2.imwrite('/home/blackmath/TEST/cap/IM' + now.strftime('%Y-%m-%d-%H-%M-%S') + '.jpg',np.asarray(color_image_src))
                     #cv2.imwrite('/home/blackmath/TEST/cap/IMFull' + now.strftime('%Y-%m-%d-%H-%M-%S') + '.jpg',np.asarray(image))
-                    #cv2.imwrite('/home/blackmath/TEST/cap/IMIA' + now.strftime('%Y-%m-%d-%H-%M-%S') + '.jpg',np.asarray(imagenn))
+                    #cv2.imwrite('/home/blackmath/Motion/cap/IMIA' + now.strftime('%Y-%m-%d-%H-%M-%S') + '.jpg',np.asarray(imagenn))
                     
                     last_move = time.time()
                     ret, tmpimg = cv2.imencode(".jpg", np.asarray(image))
@@ -151,7 +154,7 @@ def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightana
             # if c == 27 or c == 10:
                # break
             
-    cv2.destroyAllWindows()
+    # cv2.destroyAllWindows()
     print("Exiting process motion")
 
 
@@ -239,9 +242,17 @@ if __name__=="__main__":
 
         ret, color_image_src = capture.read()   
         cpt +=1
+
+        sys.stdout.write('| frame {:4d}; queue size {:4d}\r'.format(cpt, taskqueue.qsize()))
+        sys.stdout.flush()
         
         if cpt > 2:
-            taskqueue.put(color_image_src)  # Added
+
+            if taskqueue.qsize() > 30:
+                print("Skip frame : " + str(taskqueue.qsize()))
+            else:
+                taskqueue.put(color_image_src)  # Added
+
             cpt = 0
             
         time.sleep(0.010)     # Added
