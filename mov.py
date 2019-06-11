@@ -18,74 +18,55 @@ from configparser import ConfigParser
 import argparse
 
 
-#**************************************************************************************************
+#****************************************************************************************************************************************************************
+def mov_analysis(imagequeue, imagennqueue, brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea):
 
-def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea, detection_crop, detection_targetarea, detection_mail):
+    t = motion(brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea)
+
+    start_time = time.time()
+
+    while True:
+        image = imagequeue.get()              # Added
+
+        if imagequeue.qsize() > 30:
+            print("Warning : imagequeue : " + str(imagequeue.qsize()))
+       
+        if not (image is None):        
+            result, color_image_src, grey_image, stats = t.run(image)
+
+            if result > 0:
+                imagennqueue.put([time.time(), image])
+
+    print("Exiting process motion")
+
+#****************************************************************************************************************************************************************
+def nn_analysis(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetarea, detection_crop, detection_targetarea):
 
     excludeobjects = []
     excludeobjects.append("bench")
 
-    t = motion(brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea)
     yy = nn(nnpath['frozeninferencegraph'], nnpath['frozeninferenceconfig'], nnpath['labelmap'], 0.4, 0.4, excludeobjects)
-    
-    sendmailqueueimg = []
-    
-    start_time = time.time()
-    last_move = time.time()
-    
+
+    last_time = time.time()
+
     while True:
-        image = taskqueue.get()              # Added
 
-        if taskqueue.qsize() > 30:
-            print("Warning : " + str(taskqueue.qsize()))
+        if imagennqueue.qsize() > 30:
+            print("Warning imagennqueue : " + str(imagennqueue.qsize()))
 
-        sendmail = 0
-        
-        if not (image is None):        
-            result, color_image_src, grey_image, stats = t.run(image)
-
-            #------------------------------------------
-            # ncurses
-            #------------------------------------------ 
-            #stdscr.clear()
-
-            #stdscr.addstr(0, 0, "Frame Duration :")
-            #stdscr.addstr(0, 20, stats['FrameDuration'])
-            
-            #stdscr.addstr(5, 0, "Queue :")
-            #stdscr.addstr(5, 20, str(taskqueue.qsize()))
-
-            #stdscr.addstr(1, 0, "Luminosité moyenne :")
-            #stdscr.addstr(1, 21, stats['LumAVG'])           
-            #stdscr.addstr(1, 30, "Luminosité courante :")
-            #stdscr.addstr(1, 51, stats['LumCUR'])  
-            #stdscr.addstr(1, 60, "% variation :")
-            #stdscr.addstr(1, 81, stats['LumPVAR'])  
- 
-            #stdscr.addstr(2, 0, "% surface totale :")
-            #stdscr.addstr(2, 21, stats['MotionPAREA'])           
-            #stdscr.addstr(2, 30, "Surface :")
-            #stdscr.addstr(2, 51, stats['MotionAREA'])  
-            #stdscr.addstr(2, 60, "Nb contours :")
-            #stdscr.addstr(2, 81, stats['MotionCnt'])  
-
-            #stdscr.refresh()    
-            #------------------------------------------ 
-            
-            # cv2.putText(color_image_src,"q:" + str(taskqueue.qsize()),(10,60), cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255,255,255),1,cv2.LINE_AA)         
-            # cv2.imshow("Target", color_image_src)
-
-            if result > 0:
-
-                elapsed_time = time.time() - start_time
-                
+        if (imagennqueue.qsize() > 0):
+            datann = imagennqueue.get()
+            if not (datann is None):
+                imagetime = datann[0]
+                image = datann[1]
                 imagenn = image.copy()
+
+                elapsed_time = imagetime - last_time
+
                 if nnareas_crop > 0:
                     imagenn = imagenn[nnareas_targetarea[1]:nnareas_targetarea[3], nnareas_targetarea[0]:nnareas_targetarea[2]]#[680:1335, 600:1600] #from 600;680 to 1935;1335
+
                 objectsdetected = yy.run(imagenn)
-                # imagenn_small = imutils.resize(imagenn, width=min(800, imagenn.shape[1]))
-                # cv2.imshow("NN", imagenn_small)
-                
                 isInteresting = 0
                 
                 for obj in objectsdetected:
@@ -93,83 +74,87 @@ def image_display(taskqueue, nnpath, nnareas_crop, nnareas_targetarea, brightana
                         isInteresting = 1
                         
                 if (elapsed_time > 1) and (isInteresting == 1):
-                    now = datetime.datetime.now()
                     if detection_crop > 0:
                         image = image[detection_targetarea[1]:detection_targetarea[3], detection_targetarea[0]:detection_targetarea[2]]#[680:1335, 320:1935]
-                    #cv2.imwrite('/home/blackmath/TEST/cap/IM' + now.strftime('%Y-%m-%d-%H-%M-%S') + '.jpg',np.asarray(color_image_src))
-                    #cv2.imwrite('/home/blackmath/TEST/cap/IMFull' + now.strftime('%Y-%m-%d-%H-%M-%S') + '.jpg',np.asarray(image))
-                    #cv2.imwrite('/home/blackmath/Motion/cap/IMIA' + now.strftime('%Y-%m-%d-%H-%M-%S') + '.jpg',np.asarray(imagenn))
-                    
-                    last_move = time.time()
+
+                    now = datetime.datetime.now()
                     ret, tmpimg = cv2.imencode(".jpg", np.asarray(image))
-                    sendmailqueueimg.append([tmpimg,now.strftime('%Y-%m-%d-%H-%M-%S')])                
+                    mailqueue.put([tmpimg,now.strftime('%Y-%m-%d-%H-%M-%S')])
 
-                    start_time = time.time()
-                    
-            else :
-                isInteresting = 0
+                    last_time = imagetime
+        else:
+            isInteresting = 0
+            time.sleep(1)
 
-            #------------------------------------------
-            # MAIL
-            #------------------------------------------   
-            size = 0
-            for img in sendmailqueueimg:
-                size += len(img[0])
-                if size > 10000000:
-                    sendmail = 1
-                    
-            last_move_delta = time.time() - last_move
-            
-            if (last_move_delta > 30) and (len(sendmailqueueimg) > 0) :
+    print("Exiting process nn")
+
+#****************************************************************************************************************************************************************
+def mail_sending(mailqueue, detection_mail):
+
+    sendmailqueueimg = []
+    sendmailpacket = []
+
+    sendmail = 0
+    last_move = time.time()
+
+    while True:
+
+        if mailqueue.qsize() > 30:
+            print("Warning mailqueue : " + str(mailqueue.qsize()))
+
+        if ((mailqueue.qsize() > 0) and (sendmail == 0)):
+            data = mailqueue.get()
+            if not (data is None):
+                last_move = time.time()
+                sendmailqueueimg.append(data)
+        else:
+            time.sleep(1)
+
+        #------------------------------------------
+        # MAIL
+        #------------------------------------------   
+        size = 0
+        for img in sendmailqueueimg:
+            size += len(img[0])
+            if size > 10000000:
                 sendmail = 1
 
-            if sendmail == 1:
-                print("Sending")
-                msg = EmailMessage()
-                msg['Subject'] = detection_mail['mail_Subject']
-                msg['From'] = detection_mail['mail_From']
-                msg['To'] = detection_mail['mail_To']
-                msg.preamble = detection_mail['mail_preamble']
+        last_move_delta = time.time() - last_move
 
-                for file in sendmailqueueimg:
-                    img_data = file[0].tobytes()
-                    msg.add_attachment(img_data, maintype='image', subtype=imghdr.what(None, img_data), filename=file[1])
+        if (last_move_delta > 30) and (len(sendmailqueueimg) > 0) :
+            sendmail = 1
 
-                # Send the email via our own SMTP server.
+        if sendmail == 1:
+            print("Sending")
+            msg = EmailMessage()
+            msg['Subject'] = detection_mail['mail_Subject']
+            msg['From'] = detection_mail['mail_From']
+            msg['To'] = detection_mail['mail_To']
+            msg.preamble = detection_mail['mail_preamble']
+
+            for file in sendmailqueueimg:
+                img_data = file[0].tobytes()
+                msg.add_attachment(img_data, maintype='image', subtype=imghdr.what(None, img_data), filename=file[1])
+
+            try:
                 with smtplib.SMTP(detection_mail['mail_SMTP']) as s:
                     s.login(detection_mail['mail_login'], detection_mail['mail_password'])
                     s.send_message(msg)
-                    print("Message sent")
+                    print("Message sent\n")
 
                 sendmail = 0
                 sendmailqueueimg[:] = []
-                
-            #------------------------------------------ 
+            except:
+                print ("Error when sending email\n")
+                time.sleep(10)
+        #------------------------------------------
 
-            #c = stdscr.getch()
-            #if c == ord('q'):
-                #break  # Exit the while()
-
-            # c = cv2.waitKey(7) % 0x100
-            # if c == 27 or c == 10:
-               # break
-            
-    # cv2.destroyAllWindows()
-    print("Exiting process motion")
-
+    print("Exiting process mail")
+        
 
 if __name__=="__main__":
     
     print("Starting")
-        
-    #------------------------------------------
-    # Init ncurses
-    #------------------------------------------    
-    #stdscr = curses.initscr()
-    #curses.noecho()
-    #stdscr.timeout(0)
-    #------------------------------------------    
-
 
     #------------------------------------------
     # Arguments
@@ -230,28 +215,38 @@ if __name__=="__main__":
                       "mail_password" : detection_mail_password}
     #------------------------------------------  
 
-    taskqueue = Queue()
-    
+    imagequeue = Queue()
+    imagennqueue = Queue()
+    mailqueue = Queue()
+
     capture = cv2.VideoCapture(camera_url)
-    
-    p = Process(target=image_display, args=(taskqueue,nnpath, nnareas_crop, nnareas_targetarea, brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea, detection_crop, detection_targetarea, detection_mail, ))
+
+    p = Process(target=mov_analysis, args=(imagequeue, imagennqueue, brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea, ))
     p.start()
+
+    nnp = Process(target=nn_analysis, args=(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetarea, detection_crop, detection_targetarea, ))
+    nnp.start()
+
+    mailp = Process(target=mail_sending, args=(mailqueue, detection_mail, ))
+    mailp.start()
+
     cpt = 0
-    
+    skipframecnt = 0
+
     while True:
 
         ret, color_image_src = capture.read()   
         cpt +=1
 
-        sys.stdout.write('| frame {:4d}; queue size {:4d}\r'.format(cpt, taskqueue.qsize()))
+        sys.stdout.write('| frame {:4d}; movqueue {:4d}; nnqueue {:4d}; mailqueue :  {:4d}; skip : {:4d}\r'.format(cpt, imagequeue.qsize(), imagennqueue.qsize(), mailqueue.qsize(), skipframecnt))
         sys.stdout.flush()
         
         if cpt > 2:
 
-            if taskqueue.qsize() > 30:
-                print("Skip frame : " + str(taskqueue.qsize()))
+            if imagequeue.qsize() > 30:
+                skipframecnt+=1
             else:
-                taskqueue.put(color_image_src)  # Added
+                imagequeue.put(color_image_src)  # Added
 
             cpt = 0
             
@@ -263,12 +258,6 @@ if __name__=="__main__":
     print("Joining")
     capture.release()
     p.join() 
+    nnp.join()
+    mailp.join()
 
-    #------------------------------------------
-    # End ncurses
-    #------------------------------------------
-    #curses.nocbreak()
-    #stdscr.keypad(False)
-    #curses.echo()
-    #curses.endwin()    
-    #------------------------------------------    
