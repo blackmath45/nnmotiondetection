@@ -26,11 +26,11 @@ def mov_analysis(imagequeue, imagennqueue, brightanalysis_targetarea, brightanal
     start_time = time.time()
 
     while True:
-        image = imagequeue.get()              # Added
-
         if imagequeue.qsize() > 30:
             print("Warning : imagequeue : " + str(imagequeue.qsize()))
-       
+
+        image = imagequeue.get()              # Added
+
         if not (image is None):        
             result, color_image_src, grey_image, stats = t.run(image)
 
@@ -48,43 +48,43 @@ def nn_analysis(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetare
     yy = nn(nnpath['frozeninferencegraph'], nnpath['frozeninferenceconfig'], nnpath['labelmap'], 0.4, 0.4, excludeobjects)
 
     last_time = time.time()
+    isInteresting = 0
 
     while True:
 
         if imagennqueue.qsize() > 30:
             print("Warning imagennqueue : " + str(imagennqueue.qsize()))
 
-        if (imagennqueue.qsize() > 0):
-            datann = imagennqueue.get()
-            if not (datann is None):
-                imagetime = datann[0]
-                image = datann[1]
-                imagenn = image.copy()
+        datann = imagennqueue.get()
+        if not (datann is None):
+            imagetime = datann[0]
+            image = datann[1]
+            imagenn = image.copy()
 
-                elapsed_time = imagetime - last_time
+            elapsed_time = imagetime - last_time
 
-                if nnareas_crop > 0:
-                    imagenn = imagenn[nnareas_targetarea[1]:nnareas_targetarea[3], nnareas_targetarea[0]:nnareas_targetarea[2]]#[680:1335, 600:1600] #from 600;680 to 1935;1335
-
-                objectsdetected = yy.run(imagenn)
+            if (elapsed_time > 30):
                 isInteresting = 0
-                
-                for obj in objectsdetected:
-                    if (obj[0] == 'person') or (obj[0] == 'car') or (obj[0] == 'bicycle') or (obj[0] == 'motorcycle') or (obj[0] == 'bus') or (obj[0] == 'truck') :
-                        isInteresting = 1
-                        
-                if (elapsed_time > 1) and (isInteresting == 1):
-                    if detection_crop > 0:
-                        image = image[detection_targetarea[1]:detection_targetarea[3], detection_targetarea[0]:detection_targetarea[2]]#[680:1335, 320:1935]
 
-                    now = datetime.datetime.now()
-                    ret, tmpimg = cv2.imencode(".jpg", np.asarray(image))
-                    mailqueue.put([tmpimg,now.strftime('%Y-%m-%d-%H-%M-%S')])
+            if nnareas_crop > 0:
+                imagenn = imagenn[nnareas_targetarea[1]:nnareas_targetarea[3], nnareas_targetarea[0]:nnareas_targetarea[2]]#[680:1335, 600:1600] #from 600;680 to 1935;1335
 
-                    last_time = imagetime
-        else:
-            isInteresting = 0
-            time.sleep(1)
+            #imagenn_small = imutils.resize(imagenn, width=min(800, imagenn.shape[1]))
+            objectsdetected = yy.run(imagenn)
+            
+            for obj in objectsdetected:
+                if (obj[0] == 'person') or (obj[0] == 'car') or (obj[0] == 'bicycle') or (obj[0] == 'motorcycle') or (obj[0] == 'bus') or (obj[0] == 'truck') :
+                    isInteresting = 1
+                    
+            if (elapsed_time > 1) and (isInteresting == 1):
+                if detection_crop > 0:
+                    image = image[detection_targetarea[1]:detection_targetarea[3], detection_targetarea[0]:detection_targetarea[2]]#[680:1335, 320:1935]
+
+                now = datetime.datetime.now()
+                ret, tmpimg = cv2.imencode(".jpg", np.asarray(imagenn)) #mettre image 
+                mailqueue.put([tmpimg,now.strftime('%Y-%m-%d-%H-%M-%S')])
+
+                last_time = imagetime
 
     print("Exiting process nn")
 
