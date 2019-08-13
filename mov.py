@@ -10,7 +10,6 @@ from multiprocessing import Process, Queue
 from queue import Empty
 from nn import nn
 from motion import motion
-import curses
 import smtplib
 import imghdr
 from email.message import EmailMessage
@@ -52,7 +51,7 @@ def nn_analysis(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetare
 
     while True:
 
-        if imagennqueue.qsize() > 30:
+        if imagennqueue.qsize() > 200:
             print("Warning imagennqueue : " + str(imagennqueue.qsize()))
 
         datann = imagennqueue.get()
@@ -63,14 +62,15 @@ def nn_analysis(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetare
 
             elapsed_time = imagetime - last_time
 
-            if (elapsed_time > 30):
+            if (elapsed_time > 5):
                 isInteresting = 0
 
             if nnareas_crop > 0:
                 imagenn = imagenn[nnareas_targetarea[1]:nnareas_targetarea[3], nnareas_targetarea[0]:nnareas_targetarea[2]]#[680:1335, 600:1600] #from 600;680 to 1935;1335
 
-            #imagenn_small = imutils.resize(imagenn, width=min(800, imagenn.shape[1]))
-            objectsdetected = yy.run(imagenn)
+            imagenn_small = imutils.resize(imagenn, width=min(800, imagenn.shape[1]))
+            #objectsdetected = yy.run(imagenn)
+            objectsdetected = yy.run(imagenn_small)
             
             for obj in objectsdetected:
                 if (obj[0] == 'person') or (obj[0] == 'car') or (obj[0] == 'bicycle') or (obj[0] == 'motorcycle') or (obj[0] == 'bus') or (obj[0] == 'truck') :
@@ -81,7 +81,7 @@ def nn_analysis(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetare
                     image = image[detection_targetarea[1]:detection_targetarea[3], detection_targetarea[0]:detection_targetarea[2]]#[680:1335, 320:1935]
 
                 now = datetime.datetime.now()
-                ret, tmpimg = cv2.imencode(".jpg", np.asarray(imagenn)) #mettre image 
+                ret, tmpimg = cv2.imencode(".jpg", np.asarray(image)) #mettre image 
                 mailqueue.put([tmpimg,now.strftime('%Y-%m-%d-%H-%M-%S')])
 
                 last_time = imagetime
@@ -243,7 +243,7 @@ if __name__=="__main__":
         
         if cpt > 2:
 
-            if imagequeue.qsize() > 30:
+            if (imagequeue.qsize() > 30) or (imagennqueue.qsize() > 200) :
                 skipframecnt+=1
             else:
                 imagequeue.put(color_image_src)  # Added
