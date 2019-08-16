@@ -18,28 +18,35 @@ import argparse
 
 
 #****************************************************************************************************************************************************************
-def mov_analysis(imagequeue, imagennqueue, brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea):
+def mov_analysis(statsqueue, imagequeue, imagennqueue, brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea):
 
     t = motion(brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea)
 
     start_time = time.time()
 
+    cpt = 0
+
     while True:
-        if imagequeue.qsize() > 30:
-            print("Warning : imagequeue : " + str(imagequeue.qsize()))
+        #if imagequeue.qsize() > 30:
+        #    print("Warning : imagequeue : " + str(imagequeue.qsize()))
 
         image = imagequeue.get()              # Added
 
         if not (image is None):        
             result, color_image_src, grey_image, stats = t.run(image)
 
-            if result > 0:
-                imagennqueue.put([time.time(), image])
+            if (result > 0):
+                # Ajout filtrage 1 image sur 2 pour ne pas surcharger le nn
+                if (cpt >= 1):
+                    cpt = 0
+                else:
+                    imagennqueue.put([time.time(), image])
+                    cpt += 1
 
     print("Exiting process motion")
 
 #****************************************************************************************************************************************************************
-def nn_analysis(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetarea, detection_crop, detection_targetarea):
+def nn_analysis(statsqueue, imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetarea, detection_crop, detection_targetarea):
 
     excludeobjects = []
     excludeobjects.append("bench")
@@ -51,8 +58,8 @@ def nn_analysis(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetare
 
     while True:
 
-        if imagennqueue.qsize() > 200:
-            print("Warning imagennqueue : " + str(imagennqueue.qsize()))
+        #if imagennqueue.qsize() > 200:
+        #    print("Warning imagennqueue : " + str(imagennqueue.qsize()))
 
         datann = imagennqueue.get()
         if not (datann is None):
@@ -89,18 +96,20 @@ def nn_analysis(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetare
     print("Exiting process nn")
 
 #****************************************************************************************************************************************************************
-def mail_sending(mailqueue, detection_mail):
+def mail_sending(statsqueue, mailqueue, detection_mail):
 
     sendmailqueueimg = []
     sendmailpacket = []
+
+    stats_mailsent = 0
 
     sendmail = 0
     last_move = time.time()
 
     while True:
 
-        if mailqueue.qsize() > 30:
-            print("Warning mailqueue : " + str(mailqueue.qsize()))
+        #if mailqueue.qsize() > 30:
+        #    print("Warning mailqueue : " + str(mailqueue.qsize()))
 
         if ((mailqueue.qsize() > 0) and (sendmail == 0)):
             data = mailqueue.get()
@@ -125,7 +134,7 @@ def mail_sending(mailqueue, detection_mail):
             sendmail = 1
 
         if sendmail == 1:
-            print("Sending")
+            #print("Sending")
             msg = EmailMessage()
             msg['Subject'] = detection_mail['mail_Subject']
             msg['From'] = detection_mail['mail_From']
@@ -140,21 +149,32 @@ def mail_sending(mailqueue, detection_mail):
                 with smtplib.SMTP(detection_mail['mail_SMTP']) as s:
                     s.login(detection_mail['mail_login'], detection_mail['mail_password'])
                     s.send_message(msg)
-                    print("Message sent\n")
+                    #print("Message sent\n")
+                    stats_mailsent += 1
+                    statsqueue.put(['mailsent', stats_mailsent])
 
                 sendmail = 0
                 sendmailqueueimg[:] = []
             except:
-                print ("Error when sending email\n")
+                print("Error when sending email\n")
                 time.sleep(10)
         #------------------------------------------
 
     print("Exiting process mail")
-        
+
+def cursor_anim(val):
+    switcher = {
+        1: "|",
+        2: "/",
+        3: "-",
+        4: "\\"
+    }
+    return switcher.get(val, "#")
+
 
 if __name__=="__main__":
-    
-    print("Starting")
+
+    print("Initialising")
 
     #------------------------------------------
     # Arguments
@@ -218,41 +238,72 @@ if __name__=="__main__":
     imagequeue = Queue()
     imagennqueue = Queue()
     mailqueue = Queue()
+    statsqueue = Queue()
 
     capture = cv2.VideoCapture(camera_url)
 
-    p = Process(target=mov_analysis, args=(imagequeue, imagennqueue, brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea, ))
+    p = Process(target=mov_analysis, args=(statsqueue, imagequeue, imagennqueue, brightanalysis_targetarea, brightanalysis_drawarea, motionareas_resize, motionareas_crop, motionareas_targetarea, ))
     p.start()
 
-    nnp = Process(target=nn_analysis, args=(imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetarea, detection_crop, detection_targetarea, ))
+    nnp = Process(target=nn_analysis, args=(statsqueue, imagennqueue, mailqueue, nnpath, nnareas_crop, nnareas_targetarea, detection_crop, detection_targetarea, ))
     nnp.start()
 
-    mailp = Process(target=mail_sending, args=(mailqueue, detection_mail, ))
+    mailp = Process(target=mail_sending, args=(statsqueue, mailqueue, detection_mail, ))
     mailp.start()
 
     cpt = 0
     skipframecnt = 0
+
+    fps_time = time.time()
+    fps_cnt = 0
+
+    stats_mailsent = 0
+    stats_imagequeueMax = 0
+    stats_imagennqueueMax = 0
+
+    print("Starting")
 
     while True:
 
         ret, color_image_src = capture.read()   
         cpt +=1
 
-        sys.stdout.write('| frame {:4d}; movqueue {:4d}; nnqueue {:4d}; mailqueue :  {:4d}; skip : {:4d}\r'.format(cpt, imagequeue.qsize(), imagennqueue.qsize(), mailqueue.qsize(), skipframecnt))
-        sys.stdout.flush()
-        
         if cpt > 2:
+
+            fps_cnt += 1
 
             if (imagequeue.qsize() > 30) or (imagennqueue.qsize() > 200) :
                 skipframecnt+=1
             else:
                 imagequeue.put(color_image_src)  # Added
 
+            #-----------------
+            # STATS
+            #-----------------
+            if (imagequeue.qsize() > stats_imagequeueMax):
+                stats_imagequeueMax = imagequeue.qsize()
+            if (imagennqueue.qsize() > stats_imagennqueueMax):
+                stats_imagennqueueMax = imagennqueue.qsize()
+            #-----------------
+
             cpt = 0
-            
+
+        if (time.time() - fps_time > 1):
+                fps_time = time.time()
+
+                while (statsqueue.qsize() > 0):
+                    stats = statsqueue.get()
+                    if(stats[0] == 'mailsent'):
+                        stats_mailsent = stats[1]
+
+                sys.stdout.write(cursor_anim(time.gmtime().tm_sec % 4 + 1) + ' fps {:2d} | movQ/max {:3d}/{:3d} | nnQ/max {:3d}/{:3d} | mailQ/sent {:3d}/{:3d} | skip : {:4d}\r'.format(fps_cnt, imagequeue.qsize(), stats_imagequeueMax, imagennqueue.qsize(), stats_imagennqueueMax, mailqueue.qsize(), stats_mailsent, skipframecnt))
+                sys.stdout.flush()
+                fps_cnt = 0
+
         time.sleep(0.010)     # Added
-        if not p.is_alive():
-            print("not alive")
+
+        if (not p.is_alive()) or (not nnp.is_alive()) or (not mailp.is_alive()):
+            print("A thread has crached")
             break
 
     print("Joining")
